@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <style>
+      body { font-family: Arial, sans-serif; padding: 20px; }
+      #itemList div { margin: 5px 0; padding: 5px; border: 1px solid #ccc; cursor: pointer; }
+      #itemList .selected { background: #d0eaff; }
+      .nav-buttons { margin: 15px 0; }
+    </style>
+  </head>
+    <body>
+      <h2>Row Adjuster Tool</h2>
+      
+      <label for="sheetMenu">Select Sheet:</label>
+      <input type="text" id="sheetSearch" placeholder="Search sheet..." />
+      <select id="sheetMenu" size="5" style="width: 200px;"></select>
+
+      <h3>Items in Column C:</h3>
+      
+      <div style="display: flex;">
+        <!-- Left Sticky Navigation -->
+        <div class="nav-buttons" style="position: sticky; top: 0; align-self: flex-start; margin-right: 20px;">
+          <button onclick="move('up')">⬆️</button><br>
+          <button onclick="move('down')">⬇️</button><br><br>
+          Move to Row:<br>
+          <input type="number" id="rowNumber" style="width: 80px;" /><br>
+          <button onclick="moveTo()">Go</button>
+        </div>
+
+        <!-- Scrollable Item List -->
+        <div id="itemList" style="flex-grow: 1;"></div>
+      </div>
+
+      <script>
+        let selectedSheet = null;
+        let selectedRows = [];
+
+        function refreshSheets() {
+          google.script.run.withSuccessHandler((sheets) => {
+            const menu = document.getElementById("sheetMenu");
+            menu.innerHTML = "";
+            sheets.forEach(sheet => {
+              const option = document.createElement("option");
+              option.value = sheet;
+              option.textContent = sheet;
+              menu.appendChild(option);
+            });
+          }).getSheetsList();
+        }
+
+        function refreshSheetData(sheetName) {
+          selectedRows = [];
+          google.script.run.withSuccessHandler((data) => {
+            const list = document.getElementById("itemList");
+            list.innerHTML = "";
+            data.forEach(item => {
+              const div = document.createElement("div");
+              div.textContent = `${item.index}: ${item.name}`;
+              div.dataset.index = item.index;
+              div.onclick = () => {
+                div.classList.toggle("selected");
+                const idx = parseInt(div.dataset.index);
+                if (selectedRows.includes(idx)) {
+                  selectedRows = selectedRows.filter(i => i !== idx);
+                } else {
+                  selectedRows.push(idx);
+                }
+              };
+              list.appendChild(div);
+            });
+          }).getSheetData(sheetName);
+        }
+
+        document.getElementById("sheetMenu").addEventListener("change", function() {
+          selectedSheet = this.value;
+          refreshSheetData(selectedSheet);
+        });
+
+        document.getElementById("sheetSearch").addEventListener("input", function() {
+          const search = this.value.toLowerCase();
+          const options = document.querySelectorAll("#sheetMenu option");
+          options.forEach(option => {
+            option.style.display = option.value.toLowerCase().includes(search) ? "" : "none";
+          });
+        });
+
+        function move(direction) {
+          if (!selectedSheet || selectedRows.length === 0) return;
+          google.script.run.withSuccessHandler(() => {
+            refreshSheetData(selectedSheet);
+          }).moveSelectedRows(selectedSheet, selectedRows, direction);
+        }
+
+        function moveTo() {
+          const newRow = parseInt(document.getElementById("rowNumber").value);
+          if (!selectedSheet || selectedRows.length === 0 || isNaN(newRow)) return;
+          google.script.run.withSuccessHandler(() => {
+            refreshSheetData(selectedSheet);
+          }).moveSelectedRows(selectedSheet, selectedRows, null, newRow);
+        }
+
+        refreshSheets();
+      </script>
+    </body>
+</html>
