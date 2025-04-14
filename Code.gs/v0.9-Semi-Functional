@@ -1,0 +1,130 @@
+const SHEET_ID = "14G38aqZ69FdbIHYwCwxIu0jq21Qw_Uo4-yB_2tOemkY";
+const EXCLUDED_TABS = ["StockTracker", "Directory", "Sender", "All Products Selector"];
+const TEMP_SHEET_NAME = '_RowMoverTemp';
+const ZONE_SIZE = 50;
+const MAX_ZONES = 10;
+
+function findAvailableZone(sheet) {
+  for (let z = 0; z < MAX_ZONES; z++) {
+    const flagCell = sheet.getRange(ZONE_SIZE * z + 1, 1); // assume flag marker
+    if (!flagCell.getValue()) {
+      flagCell.setValue('IN USE');
+      return z;
+    }
+  }
+  throw new Error("No copy zones available — try again shortly.");
+}
+
+function releaseZone(sheet, zoneIndex) {
+  const flagCell = sheet.getRange(ZONE_SIZE * zoneIndex + 1, 1);
+  flagCell.clearContent();
+}
+
+
+function doGet() {
+  return HtmlService.createHtmlOutputFromFile("Index")
+    .setTitle("Row Adjuster Tool")
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
+function getSheetsList() {
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  return ss.getSheets()
+    .filter(sheet => !EXCLUDED_TABS.includes(sheet.getName()))
+    .map(sheet => sheet.getName());
+}
+
+function findAvailableZone(sheet) {
+  for (let z = 0; z < MAX_ZONES; z++) {
+    const flagCell = sheet.getRange(ZONE_SIZE * z + 1, 1); // assume flag marker
+    if (!flagCell.getValue()) {
+      flagCell.setValue('IN USE');
+      return z;
+    }
+  }
+  throw new Error("No copy zones available — try again shortly.");
+}
+
+function releaseZone(sheet, zoneIndex) {
+  const flagCell = sheet.getRange(ZONE_SIZE * zoneIndex + 1, 1);
+  flagCell.clearContent();
+}
+
+function getSheetData(sheetName) {
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const sheet = ss.getSheetByName(sheetName);
+  if (!sheet) return [];
+
+  const data = sheet.getRange(1, 3, sheet.getLastRow()).getValues();
+  return data.map((row, index) => ({
+    index: index + 1,
+    name: row[0]
+  }));
+}
+
+function moveSelectedRows(sheetName, selectedIndices, direction, newPosition = null) {
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const sheet = ss.getSheetByName(sheetName);
+  if (!sheet) return { success: false };
+
+  selectedIndices.sort((a, b) => a - b);
+  const totalCols = sheet.getLastColumn();
+
+  // === STEP 1: Prepare temp sheet and find available zone ===
+  let tempSheet = ss.getSheetByName(TEMP_SHEET_NAME);
+  if (!tempSheet) {
+    tempSheet = ss.insertSheet(TEMP_SHEET_NAME);
+  } else {
+    tempSheet.clear(); // full clear just in case
+  }
+
+  const zoneIndex = findAvailableZone(tempSheet);
+  const zoneStartRow = zoneIndex * ZONE_SIZE + 2; // +1 to skip flag, +1 to start at row 2
+
+  // === STEP 2: Backup selected rows into zone ===
+  for (let i = 0; i < selectedIndices.length; i++) {
+    const sourceRange = sheet.getRange(selectedIndices[i], 1, 1, totalCols);
+    const targetRange = tempSheet.getRange(zoneStartRow + i, 1);
+    sourceRange.copyTo(targetRange, SpreadsheetApp.CopyPasteType.PASTE_NORMAL, false);
+  }
+
+  // === STEP 3: Determine insertIndex BEFORE deletion ===
+  let insertIndex;
+  if (newPosition !== null) {
+    insertIndex = Math.max(1, newPosition);
+  } else {
+    const offset = direction === "up" ? -1 : 1;
+    if (direction === "up") {
+      insertIndex = Math.max(1, selectedIndices[0] + offset);
+    } else {
+      insertIndex = selectedIndices[selectedIndices.length - 1] + 1 + offset;
+    }
+  }
+
+  // === STEP 4: Delete original rows (bottom to top) ===
+  for (let i = selectedIndices.length - 1; i >= 0; i--) {
+    sheet.deleteRow(selectedIndices[i]);
+  }
+
+  // === STEP 5: Adjust insert index AFTER deletion ===
+  const rowsAboveDeleted = selectedIndices.filter(i => i < insertIndex).length;
+  insertIndex -= rowsAboveDeleted;
+
+  // === STEP 6: Re-insert rows from temp zone ===
+  for (let i = 0; i < selectedIndices.length; i++) {
+    sheet.insertRows(insertIndex + i);
+    const targetRange = sheet.getRange(insertIndex + i, 1);
+    const sourceRange = tempSheet.getRange(zoneStartRow + i, 1, 1, totalCols);
+    sourceRange.copyTo(targetRange, SpreadsheetApp.CopyPasteType.PASTE_NORMAL, false);
+  }
+
+  // === STEP 7: Clean and release the zone ===
+  tempSheet.getRange(zoneStartRow, 1, selectedIndices.length, totalCols).clearContent();
+  releaseZone(tempSheet, zoneIndex);
+
+  return { success: true };
+}
+
+
+
+
