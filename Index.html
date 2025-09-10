@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+<style>
+  body {
+    font-family: Arial, sans-serif;
+    padding: 20px;
+    font-size: 50px;
+  }
+
+  label {
+    font-size: 50px;
+    font-weight: bold;
+  }
+
+  input[type="text"], input[type="number"], select {
+    font-size: 50px;
+    padding: 8px;
+    margin-top: 5px;
+    margin-bottom: 10px;
+    width: 220px;
+  }
+
+  select {
+    height: auto;
+  }
+
+  button {
+    font-size: 50px;
+    padding: 10px 16px;
+    margin: 20px 0;
+    width: 120px;
+    cursor: pointer;
+  }
+
+  #itemList div {
+    margin: 8px 0;
+    padding: 10px;
+    border: 2px solid #ccc;
+    border-radius: 6px;
+    font-size: 18px;
+    cursor: pointer;
+  }
+
+  #itemList .selected {
+    background: #d0eaff;
+    font-weight: bold;
+  }
+
+.nav-buttons {
+  position: fixed;
+  top: 40%;
+  left: 10px;
+  transform: translateY(-50%);
+  background: #f8f8f8;
+  padding: 15px;
+  border: 2px solid #ccc;
+  border-radius: 5px;
+  box-shadow: 2px 2px 8px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  font-size: 30px;
+}
+
+.nav-buttons button {
+  font-size: 50px;
+  padding: 10px 16px;
+  margin: 6px 0;
+  width: 120px;
+}
+
+.nav-buttons input[type="number"] {
+  font-size: 25px;
+  width: 100px;
+  padding: 6px;
+  margin: 20px 0;
+}
+</style>
+  </head>
+    <body>
+      <h2>Row Adjuster Tool</h2>
+      
+      <label for="sheetMenu">Select Sheet:</label>
+      <input type="text" id="sheetSearch" placeholder="Search sheet..." />
+      <select id="sheetMenu" size="5" style="width: 200px;"></select>
+
+      <h3>------------ITEMS------------</h3>
+      
+    <div style="display: flex;">
+      <!-- Left Fixed Navigation -->
+      <div class="nav-buttons">
+        <button onclick="move('up')">⬆️</button><br>
+        <button onclick="move('down')">⬇️</button><br><br>
+        Move to<br> Row:<br>
+        <input type="number" id="rowNumber" /><br>
+        <button onclick="moveTo()">Go</button>
+      </div>
+
+      <!-- Scrollable Item List -->
+      <div id="itemList" style="flex-grow: 1; margin-left: 160px;"></div>
+    </div>
+
+      <script>
+        let selectedSheet = null;
+        let selectedRows = [];
+
+        function refreshSheets() {
+          google.script.run.withSuccessHandler((sheets) => {
+            const menu = document.getElementById("sheetMenu");
+            menu.innerHTML = "";
+            sheets.forEach(sheet => {
+              const option = document.createElement("option");
+              option.value = sheet;
+              option.textContent = sheet;
+              menu.appendChild(option);
+            });
+          }).getSheetsList();
+        }
+
+        function refreshSheetData(sheetName, highlightNames = []) {
+          selectedRows = [];
+
+          google.script.run.withSuccessHandler((data) => {
+            const list = document.getElementById("itemList");
+            list.innerHTML = "";
+
+            data.forEach(item => {
+              const div = document.createElement("div");
+              div.textContent = `${item.index}: ${item.name}`;
+              div.dataset.index = item.index;
+
+              div.style.backgroundColor = item.bgColor || '#fff';
+              div.style.color = item.fontColor || '#000';
+              div.style.padding = "10px";
+              div.style.border = "2px solid #ccc";
+              div.style.borderRadius = "6px";
+              div.style.margin = "8px 0";
+              div.style.cursor = "pointer";
+              div.style.fontSize = "18px";
+
+              if (highlightNames.includes(item.name)) {
+                div.classList.add("selected");
+                selectedRows.push(item.index);
+              }
+
+              div.onclick = () => {
+                div.classList.toggle("selected");
+                const idx = parseInt(div.dataset.index);
+                if (selectedRows.includes(idx)) {
+                  selectedRows = selectedRows.filter(i => i !== idx);
+                } else {
+                  selectedRows.push(idx);
+                }
+              };
+
+              list.appendChild(div);
+            });
+          }).getSheetData(sheetName);
+        }
+        document.getElementById("sheetMenu").addEventListener("change", function() {
+          selectedSheet = this.value;
+          refreshSheetData(selectedSheet);
+        });
+
+        document.getElementById("sheetSearch").addEventListener("input", function() {
+          const search = this.value.toLowerCase();
+          const options = document.querySelectorAll("#sheetMenu option");
+          options.forEach(option => {
+            option.style.display = option.value.toLowerCase().includes(search) ? "" : "none";
+          });
+        });
+
+      function move(direction) {
+        if (!selectedSheet || selectedRows.length === 0) return;
+
+        disableButtons(true);
+
+        google.script.run
+          .withSuccessHandler((res) => {
+            disableButtons(false);
+            refreshSheetData(selectedSheet, res.movedNames || []);
+          })
+          .withFailureHandler(err => {
+            disableButtons(false);
+            alert("Move failed: " + (err.message || err));
+          })
+          .moveSelectedRows(selectedSheet, selectedRows, direction);
+      }
+
+      function moveTo() {
+        const newRow = parseInt(document.getElementById("rowNumber").value);
+        if (!selectedSheet || selectedRows.length === 0 || isNaN(newRow)) return;
+
+        disableButtons(true);
+
+        google.script.run
+          .withSuccessHandler((res) => {
+            disableButtons(false);
+            refreshSheetData(selectedSheet, res.movedNames || []);
+          })
+          .withFailureHandler(err => {
+            disableButtons(false);
+            alert("Move failed: " + (err.message || err));
+          })
+          .moveSelectedRows(selectedSheet, selectedRows, null, newRow);
+      }
+      function disableButtons(disable) {
+  document.querySelectorAll(".nav-buttons button").forEach(btn => {
+    btn.disabled = disable;
+  });
+}
+        refreshSheets();
+      </script>
+    </body>
+</html>
